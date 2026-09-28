@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ytedit"
+version = "0.1.0"
+description = "すみれ&あおい 時事ニュース動画の編集自動化ツール"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pillow>=10.1",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "imageio-ffmpeg>=0.4.9",
+]
+
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.0"]
+llm = ["anthropic>=0.80"]
+download = ["yt-dlp"]
+gui = ["gradio>=4.0"]
+full = ["faster-whisper>=1.0", "anthropic>=0.80", "yt-dlp", "gradio>=4.0"]
+dev = ["pytest"]
+
+[project.scripts]
+ytedit = "ytedit.cli:main"
+
+[tool.setuptools]
+packages = ["ytedit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
