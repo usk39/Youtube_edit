@@ -1,12 +1,15 @@
 """立ち絵 1 枚から表情差分を自動で作る(`ytedit add-character`)。
 
-顔そのものは描き換えず、漫符(びっくりマーク・怒りマーク・汗・ガーン線・はてな・キラキラ等)と
-色の演出で感情を表す。動画では表情ごとの動き(驚き=ジャンプ、怒り=震え、落ち込み=沈む)も付く。
+1. 目と口の位置を見つける(添付の すみれ/あおい はプリセット、それ以外は自動検出。face.json で手直し可)
+2. 顔そのもの(目・口・眉)を表情に合わせて描き換える (face_edit.py)
+3. 漫符(びっくりマーク・怒りマーク・汗・はてな・キラキラ等)を足す
+動画では表情ごとの動き(驚き=ジャンプ、怒り=震え、落ち込み=沈む)も付く。
 本物の表情差分画像があれば、同じファイル名で置き換えるとそちらが使われる。
 """
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -14,6 +17,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from . import graphics as G
+from .face import draw_debug, find_face, transform_face
+from .face_edit import edit_face
 
 EXPRESSIONS = ["normal", "smile", "laugh", "surprised", "angry", "sad", "thinking", "doya", "jito"]
 # 表情ごとの動き (render.py で使用)
@@ -159,8 +164,14 @@ def _gloom(layer: Image.Image, face: Face, color, strength: int, lines: bool):
                    width=max(2, int(6 * face.s)))
 
 
-def make_expression(base: Image.Image, expr: str, head_ratio: float = 0.6, font_path: str | None = None) -> Image.Image:
-    """余白付きの共通キャンバスに、表情の演出を描き込んだ画像を返す。"""
+def make_expression(base: Image.Image, expr: str, head_ratio: float = 0.6, font_path: str | None = None,
+                    face: dict | None = None) -> Image.Image:
+    """余白付きの共通キャンバスに、表情を描き込んだ画像を返す。
+
+    face(目と口の位置)があれば顔そのもの(目・口・眉)を描き換え、さらに漫符を足す。
+    """
+    if face:
+        base = edit_face(base, face, expr)
     pw, pt = int(base.width * PAD_X), int(base.height * PAD_TOP)
     canvas = Image.new("RGBA", (base.width + pw * 2, base.height + pt), (0, 0, 0, 0))
     canvas.alpha_composite(base, (pw, pt))
@@ -200,14 +211,33 @@ def make_expression(base: Image.Image, expr: str, head_ratio: float = 0.6, font_
 def add_character(char_id: str, src: str | Path, assets_dir: str | Path, head_ratio: float = 0.6,
                   force: bool = False, font_path: str | None = None) -> list[Path]:
     """立ち絵を登録し、表情差分を assets/characters/<id>/ に書き出す。"""
-    base = ensure_transparent(Image.open(src))
-    bbox = base.getbbox()
-    if bbox:
-        base = base.crop(bbox)
-    if base.height > 1400:  # 大きすぎる画像は縮小(画質は十分)
-        base = base.resize((int(base.width * 1400 / base.height), 1400), Image.LANCZOS)
+    original = ensure_transparent(Image.open(src))
     out_dir = Path(assets_dir) / "characters" / char_id
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 目と口の位置: 手で直した face.json > 添付キャラのプリセット > 自動検出
+    face_file = out_dir / "face.json"
+    face = None
+    if face_file.exists():
+        saved = json.loads(face_file.read_text(encoding="utf-8"))
+        if saved.get("manual"):
+            face = saved
+    face = face or find_face(original)
+    if face:
+        face_file.write_text(json.dumps({"manual": False, **face, "source": Path(src).name}, ensure_ascii=False,
+                                        indent=1), encoding="utf-8")
+        draw_debug(original, face).save(out_dir / "face_check.png")
+    else:
+        print(f"[表情] {char_id}: 目と口の位置が見つからないため、漫符だけで表情を付けます")
+
+    base = original
+    bbox = base.getbbox() or (0, 0, base.width, base.height)
+    base = base.crop(bbox)
+    scale = 1.0
+    if base.height > 1400:  # 大きすぎる画像は縮小(画質は十分)
+        scale = 1400 / base.height
+        base = base.resize((int(base.width * scale), 1400), Image.LANCZOS)
+    face_local = transform_face(face, (bbox[0], bbox[1]), scale) if face else None
     font_path = font_path or G.find_font(None, assets_dir)
     written = []
     replaceable = force or (out_dir / ".generated").exists() or (out_dir / ".placeholder").exists()
@@ -215,7 +245,7 @@ def add_character(char_id: str, src: str | Path, assets_dir: str | Path, head_ra
         p = out_dir / f"{expr}.png"
         if p.exists() and not replaceable:
             continue  # 手描きの表情差分を上書きしない
-        make_expression(base, expr, head_ratio, font_path).save(p)
+        make_expression(base, expr, head_ratio, font_path, face_local).save(p)
         written.append(p)
     (out_dir / ".placeholder").unlink(missing_ok=True)
     (out_dir / ".generated").write_text("ytedit add-character で自動生成", encoding="utf-8")

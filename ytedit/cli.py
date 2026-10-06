@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from .config import load_config
 from .features import FEATURES, PRESETS, interactive_select, parse_features
@@ -76,6 +77,9 @@ def _cmd_add_character(args) -> int:
     d = f"{cfg['assets_dir']}/characters/{args.char}"
     if written:
         print(f"{args.char} の表情差分を {len(written)} 枚作成しました: {d}")
+        if Path(d, "face_check.png").exists():
+            print(f"目と口の位置の確認用画像: {d}/face_check.png (赤丸=目、青枠=口)\n"
+                  f"  ずれていたら {d}/face.json の座標を直し、\"manual\": true にして --force で再実行してください")
     else:
         print(f"{d} に手描きの表情差分があるため作成しませんでした(上書きするなら --force)")
     return 0
@@ -113,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("features", help="機能とプリセットの一覧")
     f.set_defaults(func=_cmd_features)
 
-    ac = sub.add_parser("add-character", help="立ち絵1枚から表情差分(漫符付き)を自動生成して登録")
+    ac = sub.add_parser("add-character", help="立ち絵1枚から表情差分(目・口・眉の描き換え＋漫符)を自動生成して登録")
     ac.add_argument("char", help="キャラ ID (sumire / aoi)")
     ac.add_argument("image", help="立ち絵画像 (png/webp/jpg。白背景なら自動で透過)")
     ac.add_argument("--force", action="store_true", help="既存の表情画像も上書きする")
