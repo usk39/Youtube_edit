@@ -13,8 +13,8 @@ CHARS = DEFAULT_CONFIG["characters"]
 def test_parse_features():
     assert parse_features("bgm,se") == ["bgm", "se"]
     assert parse_features("all,-shorts,-wipe") == PRESETS["standard"]
-    assert set(parse_features("requested")) == {"bgm", "materials", "background", "expressions", "audio", "se", "cutin",
-                                                "subtitles"}
+    assert set(parse_features("requested")) == {"bgm", "expressions", "audio", "se", "cutin", "subtitles"}
+    assert parse_features(None) == parse_features("requested")
     with pytest.raises(ValueError):
         parse_features("unknown")
 

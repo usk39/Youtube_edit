@@ -15,7 +15,7 @@ from .transcript import Segment
 
 Emotion = Literal["normal", "smile", "laugh", "surprised", "angry", "sad", "thinking", "doya", "jito"]
 SEKind = Literal["none", "surprise", "laugh", "point", "question", "shock", "transition"]
-Mood = Literal["calm", "bright", "tense"]
+Mood = Literal["calm", "bright", "tense", "sad", "comical"]
 
 
 class SegmentTag(BaseModel):
@@ -41,8 +41,15 @@ class Chapter(BaseModel):
     background_query_en: str
 
 
+class Scene(BaseModel):
+    start_index: int
+    mood: Mood
+    description: str
+
+
 class Overview(BaseModel):
     chapters: list[Chapter]
+    scenes: list[Scene]
     title_ideas: list[str]
     description: str
     thumbnail_text: str
@@ -132,7 +139,9 @@ def analyze_with_claude(segments: list[Segment], cfg: dict, material_tags: list[
 
     prompt = (
         "背景画像タグ: " + (", ".join(sorted(set(background_tags))) or "(なし)") + "\n\n"
-        "以下は動画の全セリフです。チャプター(話題の区切り。最初は index 0。background_query_en は"
+        "以下は動画の全セリフです。シーン(雰囲気のまとまり。BGM と効果音を切り替える単位で、最初は index 0、"
+        "1 シーンは目安 30 秒以上。mood は calm=落ち着き/bright=明るい/tense=緊迫・驚き/sad=しんみり/comical=コミカル・ツッコミ)、"
+        "チャプター(話題の区切り。最初は index 0。background_query_en は"
         "その話題の背景に使う写真を探す英語の検索語で、文字が少なく落ち着いた風景や街並みにする)、YouTube タイトル案を5つ、"
         "概要欄の文章(チャプターのタイムスタンプは不要)、サムネイル用の短い煽り文句(12文字以内)、タグを作ってください。\n\n"
         + _lines(segments, chars)
@@ -144,5 +153,12 @@ def analyze_with_claude(segments: list[Segment], cfg: dict, material_tags: list[
             chapters.append({"start": 0.0 if not chapters else segments[c.start_index].start, "title": c.title,
                              "bgm_mood": c.bgm_mood, "background_keywords": c.background_keywords,
                              "background_query_en": c.background_query_en})
-    return {"chapters": chapters, "title_ideas": ov.title_ideas, "description": ov.description,
+    scenes = []
+    for sc in sorted(ov.scenes, key=lambda c: c.start_index):
+        if 0 <= sc.start_index < len(segments):
+            start = 0.0 if not scenes else segments[sc.start_index].start
+            if scenes:
+                scenes[-1]["end"] = start
+            scenes.append({"start": start, "end": None, "mood": sc.mood, "label": sc.description})
+    return {"chapters": chapters, "scenes": scenes, "title_ideas": ov.title_ideas, "description": ov.description,
             "thumbnail_text": ov.thumbnail_text, "tags": ov.tags}

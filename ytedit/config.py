@@ -23,12 +23,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {"enabled": "auto", "model": "claude-opus-5", "chunk_size": 80},
     "silence_cut": {"noise_db": -38, "min_silence": 0.7, "keep_padding": 0.18},
     "audio": {"target_lufs": -14, "true_peak": -1.5, "highpass_hz": 80, "denoise": True, "compressor": True},
-    "bgm": {"volume_db": -24, "ducking": True, "fade_in": 2.0, "fade_out": 3.0, "mood": "auto"},
+    # mood: auto=シーンの雰囲気で自動 / calm / bright / tense / sad / comical で固定
+    "bgm": {"volume_db": -24, "ducking": True, "fade_in": 2.0, "fade_out": 3.0, "crossfade": 2.0, "mood": "auto"},
     "background": {"video_scale": 0.72, "video_top": 36, "border": 8, "border_color": "#FFFFFF", "per_chapter": True,
                    "blur": 4, "darken": 0.15},  # ネット写真は少しぼかして暗くし、元動画を目立たせる
     "materials": {"min_duration": 3.0, "max_duration": 7.0, "max_per_minute": 6, "box": [0.30, 0.10, 0.40, 0.42]},
-    "expressions": {"height_ratio": 0.46, "margin_x": 10, "bob": True, "motion": True, "head_ratio": 0.6},
-    "se": {"volume_db": -6, "min_gap": 2.5},
+    # lipsync=口パク / blink=目パチ / motion=表情ごとの動き / bob=話している間の揺れ
+    "expressions": {"height_ratio": 0.46, "margin_x": 10, "bob": True, "motion": True, "head_ratio": 0.6,
+                    "lipsync": True, "blink": True},
+    "se": {"volume_db": -6, "min_gap": 2.5, "scene_transition": True},
     "cutin": {"duration": 1.6, "max_count": 8, "min_gap": 25.0, "height_ratio": 0.36},
     "wipe": {"diameter": 240, "border": 8, "position": "top-right", "margin": 30, "video": None},
     # max_chars_per_line は上限。実際は画面幅とキャラの幅から自動計算した文字数との小さい方

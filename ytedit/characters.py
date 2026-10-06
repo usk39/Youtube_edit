@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from . import graphics as G
 from .face import draw_debug, find_face, transform_face
-from .face_edit import edit_face
+from .face_edit import CLOSED_EYES, edit_face
 
 EXPRESSIONS = ["normal", "smile", "laugh", "surprised", "angry", "sad", "thinking", "doya", "jito"]
 # 表情ごとの動き (render.py で使用)
@@ -164,14 +164,26 @@ def _gloom(layer: Image.Image, face: Face, color, strength: int, lines: bool):
                    width=max(2, int(6 * face.s)))
 
 
+def variant_name(expr: str, mouth: int = 0, blink: bool = False) -> str:
+    """口パク・目パチ用の差分ファイル名。例: normal / normal__m1 / normal__b / normal__b_m2"""
+    tags = (["b"] if blink else []) + ([f"m{mouth}"] if mouth else [])
+    return expr + ("__" + "_".join(tags) if tags else "")
+
+
+def variants(expr: str) -> list[tuple[int, bool]]:
+    blinks = [False] if expr in CLOSED_EYES else [False, True]
+    return [(m, b) for b in blinks for m in (0, 1, 2)]
+
+
 def make_expression(base: Image.Image, expr: str, head_ratio: float = 0.6, font_path: str | None = None,
-                    face: dict | None = None) -> Image.Image:
+                    face: dict | None = None, mouth: int = 0, blink: bool = False) -> Image.Image:
     """余白付きの共通キャンバスに、表情を描き込んだ画像を返す。
 
     face(目と口の位置)があれば顔そのもの(目・口・眉)を描き換え、さらに漫符を足す。
+    mouth(0/1/2)=口パクの開き具合、blink=まばたき中。
     """
     if face:
-        base = edit_face(base, face, expr)
+        base = edit_face(base, face, expr, mouth, blink)
     pw, pt = int(base.width * PAD_X), int(base.height * PAD_TOP)
     canvas = Image.new("RGBA", (base.width + pw * 2, base.height + pt), (0, 0, 0, 0))
     canvas.alpha_composite(base, (pw, pt))
@@ -245,8 +257,11 @@ def add_character(char_id: str, src: str | Path, assets_dir: str | Path, head_ra
         p = out_dir / f"{expr}.png"
         if p.exists() and not replaceable:
             continue  # 手描きの表情差分を上書きしない
-        make_expression(base, expr, head_ratio, font_path, face_local).save(p)
-        written.append(p)
+        for mouth, blink in (variants(expr) if face_local else [(0, False)]):
+            q = out_dir / f"{variant_name(expr, mouth, blink)}.png"
+            make_expression(base, expr, head_ratio, font_path, face_local, mouth, blink).save(q)
+            if q == p:
+                written.append(p)
     (out_dir / ".placeholder").unlink(missing_ok=True)
     (out_dir / ".generated").write_text("ytedit add-character で自動生成", encoding="utf-8")
     return written

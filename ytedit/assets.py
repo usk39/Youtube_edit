@@ -100,8 +100,9 @@ class AssetLibrary:
     def bgm_list(self, mood: str) -> list[Path]:
         return self._audio_in(f"bgm/{mood}") or self._audio_in("bgm")
 
-    def se(self, kind: str, seed: int = 0) -> Path | None:
-        files = self._audio_in(f"se/{kind}")
+    def se(self, kind: str, seed: int = 0, mood: str | None = None) -> Path | None:
+        """効果音。se/<kind>/<mood>/ があればシーンの雰囲気に合うものを優先。"""
+        files = (self._audio_in(f"se/{kind}/{mood}") if mood else []) or self._audio_in(f"se/{kind}")
         return files[seed % len(files)] if files else None
 
     # --------------------------------------------------------- キャラクター
@@ -113,7 +114,24 @@ class AssetLibrary:
 
     def expressions(self, char_id: str) -> list[str]:
         d = self.root / "characters" / char_id
-        return sorted(p.stem for p in d.glob("*") if p.suffix.lower() in IMAGE_EXT) if d.exists() else []
+        if not d.exists():
+            return []
+        return sorted(p.stem for p in d.glob("*") if p.suffix.lower() in IMAGE_EXT and "__" not in p.stem)
+
+    def sprite(self, char_id: str, expression: str, mouth: int = 0, blink: bool = False) -> Path | None:
+        """口パク(mouth)・目パチ(blink)の差分画像。無ければ近いもの → 表情の基本画像。"""
+        from .characters import variant_name
+
+        d = self.root / "characters" / char_id
+        base = self.character(char_id, expression)
+        if base is None:
+            return None
+        expr = base.stem
+        for m, b in ((mouth, blink), (mouth, False), (0, blink)):
+            p = d / f"{variant_name(expr, m, b)}.png"
+            if p.exists():
+                return p
+        return base
 
     @staticmethod
     def _char_file(d: Path, expression: str) -> Path | None:

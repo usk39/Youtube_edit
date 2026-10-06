@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .assets import AssetLibrary
+from .analyze import detect_scenes
 from .characters import MOTIONS
 from .online import BACKGROUND_FALLBACK_EN, OnlineSource
 from .ffmpeg import MediaInfo
@@ -86,6 +87,10 @@ def build_plan(segments: list[Segment], info: MediaInfo, source: Path, features:
         "se": [], "cutins": [], "popups": [],
     }
     ranges = _chapter_ranges(plan["chapters"], D)
+    scenes = [dict(sc) for sc in (overview.get("scenes") or detect_scenes(segments, D, plan["chapters"]))]
+    for i, sc in enumerate(scenes):
+        sc["end"] = scenes[i + 1]["start"] if i + 1 < len(scenes) else D
+    plan["scenes"] = scenes
 
     online = OnlineSource(cfg)
     prefer_local = cfg["online"].get("prefer") == "local"
@@ -114,15 +119,25 @@ def build_plan(segments: list[Segment], info: MediaInfo, source: Path, features:
             print("[背景] 背景画像が見つからないためスキップ")
 
     if "bgm" in features:
-        mood_cfg = cfg["bgm"]["mood"]
+        bc = cfg["bgm"]
         items = []
-        for a, b, ch in ranges:
-            mood = (ch.get("bgm_mood") or "calm") if mood_cfg == "auto" else mood_cfg
+        for sc in scenes:  # シーンごとに雰囲気に合う曲
+            mood = sc["mood"] if bc["mood"] == "auto" else bc["mood"]
             files = lib.bgm_list(mood)
             path, meta = pick(files[0] if files else None, lambda: online.bgm(mood))
             if path:
-                items.append({"path": path, "mood": mood, "start": a, "end": b, "credit": meta})
-        plan["bgm"] = [{**e, "volume_db": cfg["bgm"]["volume_db"]} for e in _merge(items, ("path",))]
+                items.append({"path": path, "mood": mood, "start": sc["start"], "end": sc["end"], "credit": meta})
+        items = _merge(items, ("path",))
+        # シーンの切り替わりはクロスフェード(前の曲を少し残し、次の曲を少し早く始める)
+        xf = float(bc.get("crossfade", 2.0))
+        for i, e in enumerate(items):
+            e["fade_in"] = bc["fade_in"] if i == 0 else xf
+            e["fade_out"] = bc["fade_out"] if i == len(items) - 1 else xf
+            if i > 0:
+                e["start"] = max(0.0, e["start"] - xf / 2)
+            if i < len(items) - 1:
+                e["end"] = min(D, e["end"] + xf / 2)
+        plan["bgm"] = [{**e, "volume_db": bc["volume_db"]} for e in items]
         if not plan["bgm"]:
             print("[BGM] BGM が見つからないためスキップ")
 
@@ -185,15 +200,22 @@ def build_plan(segments: list[Segment], info: MediaInfo, source: Path, features:
         events = [(s.start, s.se, i) for i, s in enumerate(segments) if s.se]
         events += [(c["start"], "cutin", 0) for c in plan["cutins"]]
         events += [(p["start"] + 0.1, "popup", 0) for p in plan["popups"]]
+        if sc.get("scene_transition", True):  # シーンの切り替わりに場面転換の音
+            events += [(x["start"], "transition", i) for i, x in enumerate(scenes) if i > 0]
+
+        def mood_at(t: float) -> str:
+            return next((x["mood"] for x in reversed(scenes) if x["start"] <= t + 1e-6), "calm")
+
         last_t = -999.0
         for t, kind, seed in sorted(events):
             forced = kind in ("cutin", "popup")
             if not forced and t - last_t < sc["min_gap"]:
                 continue
-            path, meta = pick(lib.se(kind, seed), lambda: online.se(kind, seed))
+            mood = mood_at(t)  # 同じ「驚き」でも、緊迫シーンとコミカルなシーンで違う音を選ぶ
+            path, meta = pick(lib.se(kind, seed, mood), lambda: online.se(kind, seed, mood))
             if path:
-                plan["se"].append({"path": path, "kind": kind, "time": round(t, 3), "volume_db": sc["volume_db"],
-                                   "credit": meta})
+                plan["se"].append({"path": path, "kind": kind, "mood": mood, "time": round(t, 3),
+                                   "volume_db": sc["volume_db"], "credit": meta})
                 last_t = t
 
     plan["credits"] = collect_credits(plan)

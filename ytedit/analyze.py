@@ -129,3 +129,60 @@ def detect_chapters(segments: list[Segment], min_len: float = 60.0) -> list[dict
                     title = "まとめ"
                 chapters.append({"start": s.start, "title": title})
     return chapters
+
+
+# ---------------------------------------------------------------- シーン
+SCENE_MOODS = ["calm", "bright", "tense", "sad", "comical"]
+SCENE_LABELS = {"calm": "落ち着き", "bright": "明るい", "tense": "緊迫", "sad": "しんみり", "comical": "コミカル"}
+EMOTION_MOOD = {"angry": "tense", "surprised": "tense", "laugh": "comical", "jito": "comical", "smile": "bright",
+                "doya": "bright", "sad": "sad", "normal": "calm", "thinking": "calm"}
+
+
+def detect_scenes(segments: list[Segment], duration: float, chapters: list[dict] | None = None,
+                  min_len: float = 25.0, window: float = 20.0) -> list[dict]:
+    """セリフの感情から「シーン(雰囲気のまとまり)」を作る。BGM と効果音の選択に使う。"""
+    if not segments:
+        return [{"start": 0.0, "end": duration, "mood": "calm"}]
+    # 各セリフの前後 window 秒の感情を集計して、そのあたりの雰囲気を決める
+    moods = []
+    for s in segments:
+        score = {m: 0.0 for m in SCENE_MOODS}
+        for o in segments:
+            if abs(o.start - s.start) <= window:
+                m = EMOTION_MOOD.get(o.emotion, "calm")
+                score[m] += max(0.5, o.duration) * (0.6 if m == "calm" else 1.0) * (1 + o.emphasis)
+        moods.append(max(score, key=score.get))
+    bounds = {round(c["start"], 2) for c in (chapters or []) if c.get("start", 0) > 0}
+    scenes: list[dict] = []
+    for s, m in zip(segments, moods):
+        start = 0.0 if not scenes else s.start
+        if scenes and scenes[-1]["mood"] == m and round(s.start, 2) not in bounds:
+            continue
+        if scenes:
+            scenes[-1]["end"] = start
+        scenes.append({"start": start, "end": duration, "mood": m})
+    # 短すぎるシーンは隣のシーンにまとめる
+    changed = True
+    while changed and len(scenes) > 1:
+        changed = False
+        for i, sc in enumerate(scenes):
+            if sc["end"] - sc["start"] >= min_len:
+                continue
+            j = i - 1 if i > 0 and (i == len(scenes) - 1 or scenes[i - 1]["end"] - scenes[i - 1]["start"] >=
+                                    scenes[i + 1]["end"] - scenes[i + 1]["start"]) else i + 1
+            a, b = sorted((i, j))
+            keep = scenes[j]["mood"]
+            scenes[a] = {"start": scenes[a]["start"], "end": scenes[b]["end"], "mood": keep}
+            del scenes[b]
+            changed = True
+            break
+    # 同じ雰囲気が続いたらつなげる
+    merged: list[dict] = []
+    for sc in scenes:
+        if merged and merged[-1]["mood"] == sc["mood"]:
+            merged[-1]["end"] = sc["end"]
+        else:
+            merged.append(dict(sc))
+    for sc in merged:
+        sc["label"] = SCENE_LABELS[sc["mood"]]
+    return merged

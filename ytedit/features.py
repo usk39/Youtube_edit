@@ -14,14 +14,14 @@ class Feature:
 
 
 FEATURES: list[Feature] = [
-    Feature("bgm", "BGM追加", "話題の雰囲気に合うBGMをネットから自動取得。尺に合わせてループし、声の間は音量を下げる(ダッキング)", True),
-    Feature("materials", "素材挿入", "セリフのキーワードに合う画像をネットから自動取得してポップ表示", True),
-    Feature("background", "背景画像", "話題に合う背景画像をネットから自動取得。元動画を枠付きで配置し、チャプターごとに背景を切替", True),
-    Feature("expressions", "キャラ表情", "すみれ/あおいの立ち絵を、セリフの感情に合わせて表情切替(漫符＋動き)", True),
+    Feature("bgm", "BGM(シーン別)", "シーンの雰囲気(落ち着き/明るい/緊迫/しんみり/コミカル)に合うBGMをネットから取得し、シーンの変わり目でクロスフェード", True),
+    Feature("expressions", "キャラ表情(目パチ/口パク)", "すみれ/あおいの表情をセリフに合わせて切替。声に合わせた口パク、自然なまばたき付き", True),
     Feature("audio", "音声調整", "ノイズ除去・低音カット・コンプ・ラウドネス正規化(-14LUFS)", True),
-    Feature("se", "効果音", "驚き/笑い/ポイント/疑問/ツッコミ/場面転換などの効果音をネットから自動取得して挿入", True),
+    Feature("se", "効果音(シーン別)", "驚き/笑い/ポイント/疑問/ツッコミ/場面転換の効果音を、シーンの雰囲気に合わせてネットから取得して挿入", True),
     Feature("cutin", "カットイン", "盛り上がる場面でキャラ＋キーワードの帯がスライドイン", True),
     Feature("subtitles", "字幕(自動改行)", "話者で色分けした字幕を、区切りのいい所で1行または2行に自動改行", True),
+    Feature("materials", "素材挿入", "セリフのキーワードに合う画像をネットから自動取得してポップ表示", False),
+    Feature("background", "背景画像", "話題に合う背景画像をネットから自動取得。元動画を枠付きで配置", False),
     Feature("wipe", "丸顔ワイプ", "話している人の顔を丸ワイプ表示(顔出し動画も丸抜き可)", False),
     Feature("silence_cut", "無音カット", "間延びした無音部分を自動でカットしてテンポアップ", False),
     Feature("popup", "登録呼びかけ", "「お願いがあるの」の場面でチャンネル登録/高評価/コメント/ハイプのバナー表示", False),
@@ -41,10 +41,13 @@ PRESETS: dict[str, list[str]] = {
 }
 
 
+DEFAULT_PRESET = "requested"
+
+
 def parse_features(spec: str | None) -> list[str]:
-    """"bgm,se,-wipe" / "standard" / "all,-shorts" のような指定を機能キーのリストに変換する。"""
+    """"bgm,se,-cutin" / "requested" / "all,-shorts" のような指定を機能キーのリストに変換する。"""
     if not spec:
-        return list(PRESETS["standard"])
+        return list(PRESETS[DEFAULT_PRESET])
     selected: list[str] = []
     for raw in spec.replace(" ", "").split(","):
         if not raw:
@@ -64,7 +67,7 @@ def parse_features(spec: str | None) -> list[str]:
 
 def interactive_select(default: list[str] | None = None) -> list[str]:
     """ターミナルで番号を入力して機能を選ぶ。"""
-    chosen = set(default or PRESETS["standard"])
+    chosen = set(default or PRESETS[DEFAULT_PRESET])
     while True:
         print("\n=== 自動化する項目を選んでください ===")
         for i, f in enumerate(FEATURES, 1):

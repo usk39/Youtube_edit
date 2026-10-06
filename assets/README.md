@@ -14,11 +14,14 @@ assets/
 │   │   └─ face/  (任意) 丸ワイプ用の顔アップ画像。同じファイル名で置く
 │   └─ aoi/     (同上)
 ├─ bgm/
-│   ├─ calm/    落ち着いた曲    ← チャプターごとに Claude が雰囲気を選ぶ
+│   ├─ calm/    落ち着いた曲    ← シーンの雰囲気で自動で選ぶ
 │   ├─ bright/  明るい曲
-│   └─ tense/   緊迫感のある曲
+│   ├─ tense/   緊迫感のある曲
+│   ├─ sad/     しんみりした曲
+│   └─ comical/ コミカルな曲
 ├─ se/
 │   ├─ surprise/ laugh/ point/ question/ shock/ transition/   ← セリフに応じて
+│   │   └─ (任意) tense/ comical/ など … シーンの雰囲気別の音(例 se/surprise/comical/)
 │   ├─ cutin/    カットイン時
 │   └─ popup/    登録呼びかけバナー時
 ├─ materials/   素材画像。ファイル名がタグ (例: 日銀_金利_グラフ.png)

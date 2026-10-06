@@ -31,9 +31,10 @@ def test_build_plan_and_graph(cfg, assets, tmp_path):
         ev = [e for e in plan["expressions"] if e["char"] == c]
         assert ev[0]["start"] == 0 and ev[-1]["end"] == 8.0
         assert all(abs(a["end"] - b["start"]) < 1e-6 for a, b in zip(ev, ev[1:]))
-    args, graph = build_command(plan, cfg, tmp_path / "work", tmp_path / "o.mp4", assets)
+    args, graph, strip = build_command(plan, cfg, tmp_path / "work", tmp_path / "o.mp4", assets)
     assert "sidechaincompress" in graph and "loudnorm" in graph and "subtitles=subs.ass" in graph
-    assert graph.count("overlay=") >= len(plan["expressions"]) + len(plan["cutins"])
+    assert graph.count("overlay=") >= 1 + len(plan["cutins"])
+    assert strip is not None and "pipe:0" in args and strip.max_width() > 0
 
 
 def test_end_to_end(cfg, media, tmp_path):

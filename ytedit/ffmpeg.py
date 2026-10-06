@@ -38,6 +38,30 @@ def run_ffmpeg(args: list[str], cwd: str | Path | None = None, quiet: bool = Tru
     return proc.stderr
 
 
+def run_ffmpeg_with_frames(args: list[str], frames, cwd: str | Path | None = None) -> None:
+    """標準入力(pipe:0)に生フレームを流し込みながら ffmpeg を実行する。"""
+    import tempfile
+
+    cmd = [ffmpeg_exe(), "-hide_banner", "-y", *[str(a) for a in args]]
+    with tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=err)
+        try:
+            for buf in frames:
+                proc.stdin.write(buf)
+        except (BrokenPipeError, OSError):
+            pass  # ffmpeg が先に終わった(長さ指定 -t に達した or エラー)
+        finally:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+        code = proc.wait()
+        if code != 0:
+            err.seek(0)
+            tail = "\n".join(err.read().decode("utf-8", "replace").strip().splitlines()[-25:])
+            raise FFmpegError(f"ffmpeg 失敗 (exit {code}):\n{tail}")
+
+
 @dataclass
 class MediaInfo:
     duration: float

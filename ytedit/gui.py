@@ -7,7 +7,7 @@ import io
 from pathlib import Path
 
 from .config import load_config
-from .features import FEATURES, PRESETS
+from .features import DEFAULT_PRESET, FEATURES, PRESETS
 
 
 def launch(config_path: str | None = None, share: bool = False) -> None:
@@ -18,7 +18,7 @@ def launch(config_path: str | None = None, share: bool = False) -> None:
     from .pipeline import run
 
     labels = {f"{f.label}" + ("" if f.requested else " ★追加"): f.key for f in FEATURES}
-    default_labels = [l for l, k in labels.items() if k in PRESETS["standard"]]
+    default_labels = [l for l, k in labels.items() if k in PRESETS[DEFAULT_PRESET]]
 
     def process(url, video, script, srt, wipe, chosen, use_llm, use_online):
         cfg = load_config(config_path)

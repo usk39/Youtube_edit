@@ -16,7 +16,8 @@ from PIL import Image
 
 from . import graphics as G
 from .assets import AssetLibrary
-from .ffmpeg import ffmpeg_exe, run_ffmpeg
+from .animate import CharacterStrip
+from .ffmpeg import ffmpeg_exe, run_ffmpeg, run_ffmpeg_with_frames
 from .subtitles import write_ass
 from .transcript import Segment
 
@@ -78,28 +79,9 @@ def _ffmpeg_major() -> int:
         return 0
 
 
-def _char_motion(e: dict, side: str, ec: dict, H: int) -> tuple[str, str]:
-    """立ち絵の位置の式。話している間の揺れと、表情ごとの動き(ジャンプ/震え/沈む)。"""
-    x = str(ec["margin_x"]) if side == "left" else f"W-w-{ec['margin_x']}"
-    y = "H-h+10"
-    a = f"(t-{e['start']:.3f})"
-    motion = e.get("motion") if ec.get("motion", True) else None
-    k = H / 1080
-    if motion == "jump":  # 驚き: ぴょんぴょんと2回跳ねる
-        y += f"-{40 * k:.1f}*abs(sin(PI*{a}/0.22))*lt({a},0.44)"
-    elif motion == "shake":  # 怒り: ぶるぶる震える
-        x += f"+{9 * k:.1f}*sin(2*PI*16*{a})*lt({a},0.6)"
-    elif motion == "sink":  # 落ち込み・ジト目: 少し沈む
-        y += f"+{22 * k:.1f}*min(1,{a}/0.4)"
-    elif motion == "bounce" and e.get("speaking"):  # 笑い: 小刻みに弾む
-        y += f"-{10 * k:.1f}*abs(sin(2*PI*4*t))"
-    if e.get("speaking") and ec["bob"] and motion not in ("jump", "bounce"):
-        y += f"-{6 * k:.1f}*abs(sin(2*PI*2.4*t))"
-    return x, y
-
-
-def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir: str | Path) -> tuple[list[str], str]:
-    """ffmpeg 引数とフィルタグラフ文字列を返す(グラフはファイル経由で渡す)。"""
+def build_command(plan: dict, cfg: dict, work: Path, out_path: Path,
+                  assets_dir: str | Path) -> tuple[list[str], str, CharacterStrip | None]:
+    """ffmpeg 引数・フィルタグラフ文字列・キャラ帯レイヤー(標準入力に流すフレーム)を返す。"""
     oc = cfg["output"]
     W, H, FPS, D = oc["width"], oc["height"], oc["fps"], float(plan["duration"])
     feats = set(plan["features"])
@@ -142,22 +124,16 @@ def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir:
         a = m["start"]
         cur = g.overlay(cur, g.image(card), f"{cx}-w/2", f"{cy}-h/2+50*max(0,1-(t-{a:.3f})/0.25)", a, m["end"])
 
-    # ------------------------------------------------------------ キャラクター立ち絵
-    ec = cfg["expressions"]
-    char_h = int(H * ec["height_ratio"])
-    char_w_max = 0
+    # ------------------------------------------------------------ キャラクター立ち絵(口パク・目パチ付き)
     lib = AssetLibrary(assets_dir)
-    boxes: dict[str, tuple | None] = {}
-    for e in plan.get("expressions", []):
-        c = e["char"]
-        if c not in boxes:
-            files = [lib.character(c, x) for x in lib.expressions(c)]
-            boxes[c] = G.union_bbox([f for f in files if f])
-        side = chars_cfg.get(c, {}).get("side", "left")
-        p = G.prepare_character(e["path"], char_h, _gfx_name(work, "chr", e["path"], char_h, boxes[c]), box=boxes[c])
-        char_w_max = max(char_w_max, Image.open(p).width)
-        x, y = _char_motion(e, side, ec, H)
-        cur = g.overlay(cur, g.image(p), x, y, e["start"], e["end"])
+    strip = None
+    char_w_max = 0
+    if plan.get("expressions"):
+        strip = CharacterStrip(plan, cfg, lib, work)
+        char_w_max = strip.max_width()
+        si = g.add_input(["-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{W}x{strip.strip_h}", "-r", str(FPS),
+                          "-i", "pipe:0"])
+        cur = g.overlay(cur, f"{si}:v", "0", "H-h", eof="pass")
 
     # ------------------------------------------------------------ 丸顔ワイプ
     wc = cfg["wipe"]
@@ -258,10 +234,11 @@ def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir:
             length = max(0.1, e["end"] - e["start"])
             lab = g.label("bgm")
             ms = int(e["start"] * 1000)
+            e_fi, e_fo = min(e.get("fade_in", fi), length / 3), min(e.get("fade_out", fo), length / 3)
             g.filters.append(
                 f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:{length:.3f},asetpts=PTS-STARTPTS,"
-                f"volume={e['volume_db']}dB,afade=t=in:st=0:d={min(fi, length / 3):.2f},"
-                f"afade=t=out:st={max(0, length - min(fo, length / 3)):.3f}:d={min(fo, length / 3):.2f},"
+                f"volume={e['volume_db']}dB,afade=t=in:st=0:d={e_fi:.2f},"
+                f"afade=t=out:st={max(0, length - e_fo):.3f}:d={e_fo:.2f},"
                 f"adelay={ms}:all=1[{lab}]")
             parts.append(f"[{lab}]")
         bus = "bgmbus"
@@ -305,14 +282,17 @@ def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir:
              "-c:v", "libx264", "-preset", oc["preset"], "-crf", str(oc["crf"]), "-r", str(FPS),
              "-c:a", "aac", "-b:a", oc["audio_bitrate"], "-t", f"{D:.3f}", "-movflags", "+faststart",
              str(out_path.resolve())]
-    return args, graph
+    return args, graph, strip
 
 
 def render(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir: str | Path) -> Path:
     work.mkdir(parents=True, exist_ok=True)
-    args, _ = build_command(plan, cfg, work, out_path, assets_dir)
+    args, _, strip = build_command(plan, cfg, work, out_path, assets_dir)
     print(f"[レンダリング] {out_path.name} を書き出し中 ... (動画の長さ {plan['duration']:.0f} 秒)")
-    run_ffmpeg(args, cwd=work)
+    if strip is None:
+        run_ffmpeg(args, cwd=work)
+    else:
+        run_ffmpeg_with_frames(args, strip.frames(), cwd=work)
     return out_path
 
 

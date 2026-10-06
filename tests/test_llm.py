@@ -23,6 +23,8 @@ class _FakeMessages:
         return _Resp(llm.Overview(
             chapters=[llm.Chapter(start_index=0, title="導入", bgm_mood="calm", background_keywords=[], background_query_en="city"),
                       llm.Chapter(start_index=1, title="本題", bgm_mood="tense", background_keywords=["政治"], background_query_en="parliament")],
+            scenes=[llm.Scene(start_index=0, mood="calm", description="導入"),
+                    llm.Scene(start_index=1, mood="comical", description="ツッコミ")],
             title_ideas=["タイトル"], description="説明", thumbnail_text="ヤバい", tags=["ニュース"]))
 
 
@@ -36,6 +38,7 @@ def test_analyze_with_claude_applies_tags(monkeypatch, cfg):
     assert [c["start"] for c in ov["chapters"]] == [0.0, 5]
     assert ov["chapters"][1]["bgm_mood"] == "tense" and ov["thumbnail_text"] == "ヤバい"
     assert ov["chapters"][1]["background_query_en"] == "parliament"
+    assert [(x["start"], x["mood"]) for x in ov["scenes"]] == [(0.0, "calm"), (5, "comical")]
 
 
 def test_llm_available_respects_off(cfg, monkeypatch):

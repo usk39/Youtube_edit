@@ -33,10 +33,24 @@ SE_QUERIES = {
     "cutin": ["swoosh impact", "whoosh hit"],
     "popup": ["pop notification", "bubble pop"],
 }
+# シーンの雰囲気によって選ぶ効果音を変える (種類, 雰囲気) → 検索語
+SE_MOOD_QUERIES = {
+    ("surprise", "tense"): ["dramatic sting", "suspense hit"],
+    ("surprise", "comical"): ["cartoon boing", "comedy surprise"],
+    ("shock", "tense"): ["dramatic boom", "cinematic impact"],
+    ("shock", "comical"): ["comedy fail", "cartoon slip"],
+    ("point", "tense"): ["suspense stinger"],
+    ("transition", "tense"): ["riser whoosh", "dark whoosh"],
+    ("transition", "comical"): ["cartoon whoosh", "slide whistle"],
+    ("transition", "sad"): ["soft whoosh", "chime soft"],
+    ("question", "comical"): ["cartoon question", "boing"],
+}
 BGM_QUERIES = {
     "calm": ["calm piano", "lofi chill"],
     "bright": ["happy upbeat", "cheerful ukulele"],
     "tense": ["suspense", "tension cinematic"],
+    "sad": ["sad piano", "melancholy"],
+    "comical": ["funny comedy", "quirky playful"],
 }
 BACKGROUND_FALLBACK_EN = ["city skyline", "abstract blue background", "office"]
 
@@ -287,10 +301,11 @@ class OnlineSource:
         return None
 
     # ---------------------------------------------------- 音
-    def se(self, kind: str, variant: int = 0) -> tuple[Path, dict] | None:
+    def se(self, kind: str, variant: int = 0, mood: str | None = None) -> tuple[Path, dict] | None:
         if not self.enabled:
             return None
-        for q in SE_QUERIES.get(kind, [kind]):
+        queries = SE_MOOD_QUERIES.get((kind, mood), []) + SE_QUERIES.get(kind, [kind])
+        for q in queries:
             cands = []
             if self._alive("freesound", "freesound_api_key"):
                 cands = self._search(f"freesound:{q}", lambda q=q: search_freesound(q, self.keys["freesound_api_key"], 10, self.allowed))
