@@ -20,9 +20,10 @@ def launch(config_path: str | None = None, share: bool = False) -> None:
     labels = {f"{f.label}" + ("" if f.requested else " ★追加"): f.key for f in FEATURES}
     default_labels = [l for l, k in labels.items() if k in PRESETS["standard"]]
 
-    def process(url, video, script, srt, wipe, chosen, use_llm):
+    def process(url, video, script, srt, wipe, chosen, use_llm, use_online):
         cfg = load_config(config_path)
         cfg["llm"]["enabled"] = "auto" if use_llm else False
+        cfg["online"]["enabled"] = bool(use_online)
         if wipe is not None:
             cfg["wipe"]["video"] = wipe if isinstance(wipe, str) else wipe.name
         src = (url or "").strip() or (video if isinstance(video, str) else getattr(video, "name", None))
@@ -46,6 +47,7 @@ def launch(config_path: str | None = None, share: bool = False) -> None:
                 wipe = gr.File(label="丸ワイプ用の顔出し動画 (任意)", file_types=["video"])
                 chosen = gr.CheckboxGroup(list(labels), value=default_labels, label="自動化する項目")
                 use_llm = gr.Checkbox(value=True, label="Claude で内容解析 (ANTHROPIC_API_KEY がある場合)")
+                use_online = gr.Checkbox(value=True, label="BGM・効果音・画像をネットから自動取得")
                 btn = gr.Button("編集スタート", variant="primary")
             with gr.Column():
                 out_video = gr.Video(label="完成動画")
@@ -53,6 +55,6 @@ def launch(config_path: str | None = None, share: bool = False) -> None:
                 out_short = gr.Video(label="ショート")
                 out_desc = gr.Textbox(label="タイトル案・概要欄・チャプター", lines=10)
                 out_log = gr.Textbox(label="ログ", lines=10)
-        btn.click(process, [url, video, script, srt, wipe, chosen, use_llm],
+        btn.click(process, [url, video, script, srt, wipe, chosen, use_llm, use_online],
                   [out_video, out_thumb, out_short, out_desc, out_log])
     app.launch(share=share)

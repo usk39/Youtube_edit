@@ -57,4 +57,5 @@ def cfg(assets, tmp_path):
         "assets_dir": str(assets), "output_dir": str(tmp_path / "out"),
         "output": {"width": 640, "height": 360, "fps": 24, "preset": "ultrafast"},
         "llm": {"enabled": False}, "cutin": {"min_gap": 3},
+        "online": {"enabled": False, "cache_dir": str(tmp_path / "online_cache")},
     })

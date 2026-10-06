@@ -118,6 +118,10 @@ def finish(plan: dict, cfg: dict, out: Path) -> dict:
     video = render(plan, cfg, work, out / "final.mp4", cfg["assets_dir"])
     result = {"video": str(video), "plan": str(out / "plan.json"), "out_dir": str(out)}
     feats = set(plan["features"])
+    credits = extras.write_credits(plan, out / "credits.txt")
+    if credits:
+        result["credits"] = str(credits)
+    result["review"] = str(extras.write_review(plan, out / "review.html"))
     if "chapters" in feats:
         result["description"] = str(extras.write_description(plan, out / "description.txt"))
     if "thumbnail" in feats:

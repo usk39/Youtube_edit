@@ -26,6 +26,7 @@ class SegmentTag(BaseModel):
     cutin: bool
     cutin_text: str
     material_keywords: list[str]
+    image_query_en: str
 
 
 class SegmentTags(BaseModel):
@@ -37,6 +38,7 @@ class Chapter(BaseModel):
     title: str
     bgm_mood: Mood
     background_keywords: list[str]
+    background_query_en: str
 
 
 class Overview(BaseModel):
@@ -56,6 +58,8 @@ SYSTEM = """あなたは時事ニュース系YouTubeチャンネルの動画編�
 - emphasis: 0〜1 の盛り上がり度。
 - cutin: 動画の山場だけ true(10分あたり最大6個程度)。cutin_text はカットインに大きく出す12文字以内の言葉。
 - material_keywords: 画面に出すと理解が深まる画像素材のキーワード。手持ち素材タグに合うものがあれば必ずそのタグ名をそのまま使う。
+- image_query_en: そのセリフに合う写真をフリー素材サイトで探すための英語の検索語(2〜4語、例 "japanese yen coins")。
+  素材が不要なセリフは空文字。人物の実名やロゴは避け、物や風景で表現する。
 """
 
 
@@ -124,10 +128,12 @@ def analyze_with_claude(segments: list[Segment], cfg: dict, material_tags: list[
             s.cutin_text = tag.cutin_text[:14]
             if tag.material_keywords:
                 s.keywords = tag.material_keywords[:5]
+            s.image_query = tag.image_query_en.strip()
 
     prompt = (
         "背景画像タグ: " + (", ".join(sorted(set(background_tags))) or "(なし)") + "\n\n"
-        "以下は動画の全セリフです。チャプター(話題の区切り。最初は index 0)、YouTube タイトル案を5つ、"
+        "以下は動画の全セリフです。チャプター(話題の区切り。最初は index 0。background_query_en は"
+        "その話題の背景に使う写真を探す英語の検索語で、文字が少なく落ち着いた風景や街並みにする)、YouTube タイトル案を5つ、"
         "概要欄の文章(チャプターのタイムスタンプは不要)、サムネイル用の短い煽り文句(12文字以内)、タグを作ってください。\n\n"
         + _lines(segments, chars)
     )
@@ -136,6 +142,7 @@ def analyze_with_claude(segments: list[Segment], cfg: dict, material_tags: list[
     for c in sorted(ov.chapters, key=lambda c: c.start_index):
         if 0 <= c.start_index < len(segments):
             chapters.append({"start": 0.0 if not chapters else segments[c.start_index].start, "title": c.title,
-                             "bgm_mood": c.bgm_mood, "background_keywords": c.background_keywords})
+                             "bgm_mood": c.bgm_mood, "background_keywords": c.background_keywords,
+                             "background_query_en": c.background_query_en})
     return {"chapters": chapters, "title_ideas": ov.title_ideas, "description": ov.description,
             "thumbnail_text": ov.thumbnail_text, "tags": ov.tags}

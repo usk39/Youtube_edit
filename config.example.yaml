@@ -19,13 +19,23 @@ llm:
 silence_cut: {noise_db: -38, min_silence: 0.7, keep_padding: 0.18}
 audio: {target_lufs: -14, highpass_hz: 80, denoise: true, compressor: true}
 bgm: {volume_db: -24, ducking: true, fade_in: 2.0, fade_out: 3.0, mood: auto}   # mood: auto/calm/bright/tense
-background: {video_scale: 0.72, border: 8, border_color: "#FFFFFF", per_chapter: true}
+background: {video_scale: 0.72, border: 8, border_color: "#FFFFFF", per_chapter: true, blur: 4, darken: 0.15}
 materials: {min_duration: 3.0, max_duration: 7.0, max_per_minute: 6, box: [0.30, 0.10, 0.40, 0.42]}  # box = x,y,幅,高さ(画面比)
-expressions: {height_ratio: 0.50, bob: true}
+expressions: {height_ratio: 0.46, bob: true, motion: true, head_ratio: 0.6}   # motion = 驚きでジャンプ等
 se: {volume_db: -6, min_gap: 2.5}
 cutin: {duration: 1.6, max_count: 8, min_gap: 25}
 wipe: {diameter: 240, border: 8, position: top-right, video: null}   # video に顔出し動画を指定すると丸抜きで表示
-subtitles: {font_size: 60, max_chars_per_line: 22}
+# 字幕は区切りのいい所で 1〜2 行に自動改行。1 行の文字数は画面幅から自動計算(この値が上限)
+subtitles: {font_size: 60, max_chars_per_line: 20, max_lines: 2, punctuation: strip_period}
 popup: {duration: 7.0, triggers: [お願いがあるの, チャンネル登録]}
 shorts: {length: 45}
-# pexels_api_key: xxxxx   # 手持ち素材に無いキーワードの画像を Pexels から自動取得
+
+# ネットからの素材自動取得 (キー無しでも Openverse から取得。キーを入れると素材の質・量が上がる)
+online:
+  enabled: true
+  prefer: online                       # online=ネット優先 / local=assets/ の手持ち素材優先
+  allowed_licenses: [cc0, pdm, by]     # 商用・改変OKのみ。CC BY はクレジットを自動作成
+  pixabay_api_key: null                # https://pixabay.com/api/docs/  (画像・日本語で検索できる)
+  pexels_api_key: null                 # https://www.pexels.com/api/    (画像)
+  freesound_api_key: null              # https://freesound.org/apiv2/apply  (効果音)
+  jamendo_client_id: null              # https://devportal.jamendo.com/     (BGM)

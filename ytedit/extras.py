@@ -31,7 +31,64 @@ def write_description(plan: dict, out: Path) -> Path:
         lines.append("")
     if ov.get("tags"):
         lines += ["■ タグ", ", ".join(ov["tags"]), ""]
+    credit_lines = credit_text(plan.get("credits", []))
+    if credit_lines:
+        lines += ["■ 使用素材(クレジット)", *credit_lines, ""]
     out.write_text("\n".join(lines) or "(解析情報がありません)\n", encoding="utf-8")
+    return out
+
+
+USED_AS = {"background": "背景", "bgm": "BGM", "materials": "画像", "se": "効果音"}
+
+
+def credit_text(credits: list[dict]) -> list[str]:
+    """概要欄に貼れるクレジット表記。表記が必要なもの(CC BY 等)は必ず載せ、不要なものも出典として載せる。"""
+    out = []
+    for c in sorted(credits, key=lambda c: (not c.get("needs_credit"), c.get("used_as", ""))):
+        title = c.get("title") or "無題"
+        by = f" by {c['creator']}" if c.get("creator") else ""
+        lic = c.get("license", "")
+        lic_url = f" ({c['license_url']})" if c.get("license_url") else ""
+        out.append(f"[{USED_AS.get(c.get('used_as'), '素材')}] \"{title}\"{by} / {lic}{lic_url} / {c.get('page', '')}")
+    return out
+
+
+def write_credits(plan: dict, out: Path) -> Path | None:
+    lines = credit_text(plan.get("credits", []))
+    if not lines:
+        return None
+    head = ["このファイルの内容を YouTube の概要欄に貼ってください(CC BY 素材はクレジット表記が必須です)。", ""]
+    out.write_text("\n".join(head + lines) + "\n", encoding="utf-8")
+    return out
+
+
+def write_review(plan: dict, out: Path) -> Path:
+    """自動で選ばれた素材を一覧で確認するための HTML(内容に合っているか・問題がないかのチェック用)。"""
+    import html
+
+    rows = []
+    for key in ("background", "materials", "bgm", "se"):
+        for e in plan.get(key, []):
+            t = e.get("start", e.get("time", 0))
+            src = Path(e["path"]).resolve().as_uri()
+            if key in ("background", "materials"):
+                media = f'<img src="{src}" loading="lazy">'
+            else:
+                media = f'<audio controls preload="none" src="{src}"></audio>'
+            c = e.get("credit") or {}
+            info = html.escape(f"{c.get('license', '手持ち素材')} {c.get('creator', '')}")
+            link = f'<a href="{html.escape(c["page"])}">出典</a>' if c.get("page") else ""
+            label = html.escape(str(e.get("keyword") or e.get("mood") or e.get("kind") or ""))
+            rows.append(f"<tr><td>{_ts(t)}</td><td>{USED_AS[key]}</td><td>{label}</td><td>{media}</td>"
+                        f"<td>{info} {link}<br><code>{html.escape(e['path'])}</code></td></tr>")
+    doc = f"""<!doctype html><meta charset="utf-8"><title>素材チェック</title>
+<style>body{{font-family:sans-serif;margin:16px}}table{{border-collapse:collapse;width:100%}}
+td{{border-bottom:1px solid #ddd;padding:6px;vertical-align:middle}}img{{max-width:260px;max-height:150px}}
+code{{font-size:11px;color:#666}}</style>
+<h1>素材チェック</h1><p>内容に合わない素材は plan.json の該当行の "path" を差し替えるか削除して
+<code>ytedit render plan.json</code> で再書き出ししてください。</p>
+<table><tr><th>時刻</th><th>種類</th><th>キーワード</th><th>素材</th><th>ライセンス</th></tr>{''.join(rows)}</table>"""
+    out.write_text(doc, encoding="utf-8")
     return out
 
 

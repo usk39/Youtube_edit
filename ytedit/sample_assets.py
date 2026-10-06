@@ -181,7 +181,10 @@ def init_assets(root: str | Path, force: bool = False) -> Path:
     chars = {"sumire": ((120, 80, 200), (230, 220, 255)), "aoi": ((40, 120, 210), (220, 240, 255))}
     for cid, (hair, accent) in chars.items():
         d = root / "characters" / cid
+        if d.exists() and not force and not (d / ".placeholder").exists():
+            continue  # 本番の立ち絵が登録済み
         d.mkdir(parents=True, exist_ok=True)
+        (d / ".placeholder").write_text("仮素材 (ytedit add-character で置き換え)", encoding="utf-8")
         for expr in EXPRESSIONS:
             p = d / f"{expr}.png"
             if force or not p.exists():

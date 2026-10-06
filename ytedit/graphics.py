@@ -10,6 +10,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 FONT_CANDIDATES = [
@@ -61,13 +62,36 @@ def save(img: Image.Image, out: str | Path) -> Path:
     return Path(out)
 
 
-def prepare_background(src: str | Path, w: int, h: int, out: str | Path) -> Path:
-    return save(cover(Image.open(src).convert("RGB"), w, h), out)
+def prepare_background(src: str | Path, w: int, h: int, out: str | Path, blur: float = 0, darken: float = 0) -> Path:
+    img = cover(Image.open(src).convert("RGB"), w, h)
+    if blur:
+        img = img.filter(ImageFilter.GaussianBlur(blur * h / 1080))
+    if darken:
+        img = Image.blend(img, Image.new("RGB", img.size, (0, 0, 0)), darken)
+    return save(img, out)
 
 
-def prepare_character(src: str | Path, target_h: int, out: str | Path, mirror: bool = False) -> Path:
+def union_bbox(paths: list[str | Path]) -> tuple[int, int, int, int] | None:
+    """同じサイズの表情差分画像すべてを覆う範囲(表情が変わっても立ち位置・大きさがずれないように)。"""
+    boxes, size = [], None
+    for p in paths:
+        img = Image.open(p)
+        if size is None:
+            size = img.size
+        elif img.size != size:
+            return None
+        b = img.convert("RGBA").getbbox()
+        if b:
+            boxes.append(b)
+    if not boxes:
+        return None
+    return min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)
+
+
+def prepare_character(src: str | Path, target_h: int, out: str | Path, mirror: bool = False,
+                      box: tuple[int, int, int, int] | None = None) -> Path:
     img = Image.open(src).convert("RGBA")
-    bbox = img.getbbox()
+    bbox = box or img.getbbox()
     if bbox:
         img = img.crop(bbox)
     scale = target_h / img.height
@@ -174,8 +198,17 @@ def make_cutin(char_src: str | Path, text: str, color: str, width: int, band_h: 
     if bbox:
         char = char.crop(bbox)
     ch = h
-    char = char.resize((int(char.width * ch * 1.6 / char.height), int(ch * 1.6)), Image.LANCZOS).crop(
-        (0, 0, int(char.width * ch * 1.6 / char.height), ch))
+    k = 1 / 0.72  # 上から 72% (SDキャラの頭〜肩) を帯に収める
+    char = char.resize((int(char.width * ch * k / char.height), int(ch * k)), Image.LANCZOS).crop(
+        (0, 0, int(char.width * ch * k / char.height), ch))
+    # 下端をフェードさせて、切り抜きの境目を目立たなくする
+    fade = Image.linear_gradient("L").resize((char.width, int(ch * 0.12)))
+    fade = Image.eval(fade, lambda v: 255 - v)
+    alpha = char.getchannel("A")
+    bottom = alpha.crop((0, ch - fade.height, char.width, ch))
+    alpha.paste(Image.fromarray((np.asarray(bottom, dtype=np.uint16) * np.asarray(fade, dtype=np.uint16) // 255)
+                                .astype(np.uint8)), (0, ch - fade.height))
+    char.putalpha(alpha)
     cx = int(width * 0.05) if char_on_left else width - char.width - int(width * 0.05)
     canvas.alpha_composite(char, (cx, 0))
 

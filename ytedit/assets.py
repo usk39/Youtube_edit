@@ -11,11 +11,7 @@ assets/
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 import yaml
@@ -132,25 +128,3 @@ class AssetLibrary:
     def resolve_expression(self, char_id: str, expression: str) -> str:
         p = self.character(char_id, expression)
         return p.stem if p else expression
-
-
-def fetch_pexels(keyword: str, api_key: str, cache_dir: Path) -> Path | None:
-    """手持ち素材に無いキーワードの画像を Pexels から取得してキャッシュする(任意機能)。"""
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    name = hashlib.md5(keyword.encode()).hexdigest()[:10]
-    cached = cache_dir / f"{name}.jpg"
-    if cached.exists():
-        return cached
-    url = "https://api.pexels.com/v1/search?" + urllib.parse.urlencode({"query": keyword, "per_page": 1, "locale": "ja-JP"})
-    try:
-        req = urllib.request.Request(url, headers={"Authorization": api_key})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            photos = json.load(r).get("photos", [])
-        if not photos:
-            return None
-        with urllib.request.urlopen(photos[0]["src"]["large"], timeout=30) as r:
-            cached.write_bytes(r.read())
-        return cached
-    except Exception as e:  # ネットワークエラー等は素材なしで続行
-        print(f"[素材] Pexels 取得失敗 ({keyword}): {e}")
-        return None

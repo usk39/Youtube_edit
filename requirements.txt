@@ -4,6 +4,7 @@ pillow>=10.1
 pyyaml>=6.0
 pydantic>=2.0
 imageio-ffmpeg>=0.4.9
+budoux>=0.6            # 字幕の自動改行(文節の区切り判定)
 # 任意(あると便利)
 faster-whisper>=1.0   # 音声認識(台本/SRT なしでも字幕・話者が取れる)
 anthropic>=0.80       # Claude による内容解析(表情・効果音・カットイン・チャプター・タイトル案)

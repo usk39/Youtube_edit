@@ -3,7 +3,7 @@ import pytest
 from ytedit import analyze
 from ytedit.config import DEFAULT_CONFIG
 from ytedit.features import PRESETS, parse_features
-from ytedit.subtitles import build_ass, wrap
+from ytedit.subtitles import build_ass
 from ytedit.transcript import (Segment, Word, align_script_with_silence, align_script_with_words, parse_script,
                                parse_srt, split_speaker_prefix, voiced_intervals, write_srt)
 
@@ -12,8 +12,9 @@ CHARS = DEFAULT_CONFIG["characters"]
 
 def test_parse_features():
     assert parse_features("bgm,se") == ["bgm", "se"]
-    assert parse_features("all,-shorts") == PRESETS["standard"]
-    assert set(parse_features("requested")) == {"bgm", "materials", "background", "expressions", "audio", "se", "cutin", "wipe"}
+    assert parse_features("all,-shorts,-wipe") == PRESETS["standard"]
+    assert set(parse_features("requested")) == {"bgm", "materials", "background", "expressions", "audio", "se", "cutin",
+                                                "subtitles"}
     with pytest.raises(ValueError):
         parse_features("unknown")
 
@@ -80,8 +81,8 @@ def test_rule_analysis():
     assert "経済" in segs[1].keywords
 
 
-def test_wrap_and_ass():
-    lines = wrap("あおい、今日はね、円安と物価の話題についてよ。実は、なんと過去最大の値上げなの！", 16)
-    assert all(len(l) <= 16 for l in lines) and "".join(lines).startswith("あおい、")
-    ass = build_ass([Segment(0, 2, "テスト{x}", "aoi")], DEFAULT_CONFIG, "IPAGothic", 300)
+def test_ass_uses_line_breaks():
+    segs = [Segment(0, 2, "テスト{x}", "aoi"), Segment(2, 4, "あおい、今日はね、円安と物価の話題についてよ。", "sumire")]
+    ass = build_ass(segs, DEFAULT_CONFIG, "IPAGothic", 300)
     assert "Style: aoi,IPAGothic" in ass and "Dialogue: 0,0:00:00.00,0:00:02.00,aoi" in ass and "{x}" not in ass
+    assert ass.rstrip().splitlines()[-1].endswith(",,あおい、今日はね、\\N円安と物価の話題についてよ")

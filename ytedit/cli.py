@@ -3,6 +3,7 @@
   ytedit run <動画ファイル or URL> [-f bgm,se,...] [--script 台本.txt]
   ytedit render output/xxx/plan.json      # plan.json を手直しして再レンダリング
   ytedit features                         # 機能一覧
+  ytedit add-character aoi あおい.png     # 立ち絵1枚から表情差分を自動生成して登録
   ytedit init-assets                      # お試し用の仮素材を作成
   ytedit gui                              # ブラウザ画面で操作
 """
@@ -34,6 +35,8 @@ def _cmd_run(args) -> int:
     cfg = load_config(args.config)
     if args.no_llm:
         cfg["llm"]["enabled"] = False
+    if args.offline:
+        cfg["online"]["enabled"] = False
     if args.wipe_video:
         cfg["wipe"]["video"] = args.wipe_video
     if args.features:
@@ -62,6 +65,22 @@ def _cmd_init_assets(args) -> int:
     return 0
 
 
+def _cmd_add_character(args) -> int:
+    from .characters import add_character
+
+    cfg = load_config(args.config)
+    if args.char not in cfg["characters"]:
+        raise ValueError(f"キャラ ID は {', '.join(cfg['characters'])} のどれかにしてください")
+    written = add_character(args.char, args.image, cfg["assets_dir"], cfg["expressions"]["head_ratio"], args.force,
+                            cfg.get("font_path"))
+    d = f"{cfg['assets_dir']}/characters/{args.char}"
+    if written:
+        print(f"{args.char} の表情差分を {len(written)} 枚作成しました: {d}")
+    else:
+        print(f"{d} に手描きの表情差分があるため作成しませんでした(上書きするなら --force)")
+    return 0
+
+
 def _cmd_gui(args) -> int:
     from .gui import launch
 
@@ -84,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("-o", "--out", help="出力フォルダ")
     r.add_argument("--plan-only", action="store_true", help="plan.json だけ作ってレンダリングしない")
     r.add_argument("--no-llm", action="store_true", help="Claude 解析を使わない")
+    r.add_argument("--offline", action="store_true", help="ネットから素材を取らず、assets/ の手持ち素材だけを使う")
     r.set_defaults(func=_cmd_run)
 
     p = sub.add_parser("render", help="plan.json から動画を書き出す")
@@ -92,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
 
     f = sub.add_parser("features", help="機能とプリセットの一覧")
     f.set_defaults(func=_cmd_features)
+
+    ac = sub.add_parser("add-character", help="立ち絵1枚から表情差分(漫符付き)を自動生成して登録")
+    ac.add_argument("char", help="キャラ ID (sumire / aoi)")
+    ac.add_argument("image", help="立ち絵画像 (png/webp/jpg。白背景なら自動で透過)")
+    ac.add_argument("--force", action="store_true", help="既存の表情画像も上書きする")
+    ac.set_defaults(func=_cmd_add_character)
 
     a = sub.add_parser("init-assets", help="お試し用の仮素材(立ち絵/BGM/効果音/素材/背景)を作る")
     a.add_argument("--dir")

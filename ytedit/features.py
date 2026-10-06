@@ -14,18 +14,18 @@ class Feature:
 
 
 FEATURES: list[Feature] = [
-    Feature("bgm", "BGM追加", "尺に合わせてループ＆フェード。声が出ている間は自動で音量を下げる(ダッキング)", True),
-    Feature("materials", "素材挿入", "話の内容(キーワード)に合う画像素材を自動でポップ表示", True),
-    Feature("background", "背景画像", "背景に画像を敷き、元動画を枠付きで配置。チャプターごとに背景を切替", True),
-    Feature("expressions", "キャラ表情", "すみれ/あおいの立ち絵を、セリフの感情に合わせて表情切替＋しゃべり揺れ", True),
+    Feature("bgm", "BGM追加", "話題の雰囲気に合うBGMをネットから自動取得。尺に合わせてループし、声の間は音量を下げる(ダッキング)", True),
+    Feature("materials", "素材挿入", "セリフのキーワードに合う画像をネットから自動取得してポップ表示", True),
+    Feature("background", "背景画像", "話題に合う背景画像をネットから自動取得。元動画を枠付きで配置し、チャプターごとに背景を切替", True),
+    Feature("expressions", "キャラ表情", "すみれ/あおいの立ち絵を、セリフの感情に合わせて表情切替(漫符＋動き)", True),
     Feature("audio", "音声調整", "ノイズ除去・低音カット・コンプ・ラウドネス正規化(-14LUFS)", True),
-    Feature("se", "効果音", "驚き/笑い/ポイント/疑問/ツッコミ/場面転換などを自動で挿入", True),
+    Feature("se", "効果音", "驚き/笑い/ポイント/疑問/ツッコミ/場面転換などの効果音をネットから自動取得して挿入", True),
     Feature("cutin", "カットイン", "盛り上がる場面でキャラ＋キーワードの帯がスライドイン", True),
-    Feature("wipe", "丸顔ワイプ", "話している人の顔を丸ワイプ表示(顔出し動画も丸抜き可)", True),
-    Feature("subtitles", "自動字幕", "話者ごとに色分けしたテロップを自動生成(SRTも出力)", False),
+    Feature("subtitles", "字幕(自動改行)", "話者で色分けした字幕を、区切りのいい所で1行または2行に自動改行", True),
+    Feature("wipe", "丸顔ワイプ", "話している人の顔を丸ワイプ表示(顔出し動画も丸抜き可)", False),
     Feature("silence_cut", "無音カット", "間延びした無音部分を自動でカットしてテンポアップ", False),
     Feature("popup", "登録呼びかけ", "「お願いがあるの」の場面でチャンネル登録/高評価/コメント/ハイプのバナー表示", False),
-    Feature("chapters", "チャプター/概要欄", "YouTube用チャプター・タイトル案・概要欄・タグを自動生成", False),
+    Feature("chapters", "チャプター/概要欄", "YouTube用チャプター・タイトル案・概要欄・タグ・素材クレジットを自動生成", False),
     Feature("thumbnail", "サムネイル", "一番盛り上がった場面からサムネイル画像を自動生成", False),
     Feature("shorts", "ショート切り出し", "盛り上がり区間を縦型(9:16)ショート動画として書き出し", False),
 ]
@@ -36,7 +36,7 @@ FEATURE_MAP = {f.key: f for f in FEATURES}
 PRESETS: dict[str, list[str]] = {
     "all": FEATURE_KEYS,
     "requested": [f.key for f in FEATURES if f.requested],
-    "standard": [k for k in FEATURE_KEYS if k != "shorts"],
+    "standard": [k for k in FEATURE_KEYS if k not in ("shorts", "wipe")],
     "light": ["bgm", "audio", "se", "subtitles"],
 }
 

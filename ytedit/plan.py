@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .assets import AssetLibrary, fetch_pexels
+from .assets import AssetLibrary
+from .characters import MOTIONS
+from .online import BACKGROUND_FALLBACK_EN, OnlineSource
 from .ffmpeg import MediaInfo
 from .transcript import Segment
 
@@ -44,6 +46,7 @@ def expression_timeline(segments: list[Segment], char: str, duration: float, lib
         e["char"] = char
         e["expression"] = lib.resolve_expression(char, e["expression"])
         e["path"] = str(lib.character(char, e["expression"]))
+        e["motion"] = MOTIONS.get(e["expression"]) if e["speaking"] or e["expression"] != "normal" else None
     return _merge(raw, ("expression", "speaking"))
 
 
@@ -84,17 +87,31 @@ def build_plan(segments: list[Segment], info: MediaInfo, source: Path, features:
     }
     ranges = _chapter_ranges(plan["chapters"], D)
 
+    online = OnlineSource(cfg)
+    prefer_local = cfg["online"].get("prefer") == "local"
+
+    def pick(local, fetch):
+        """手持ち素材とネット素材のどちらを使うか(prefer 設定に従い、無ければもう一方)。"""
+        if prefer_local:
+            return (str(local), None) if local else _hit(fetch())
+        got = _hit(fetch())
+        return got if got[0] else ((str(local), None) if local else (None, None))
+
     if "background" in features:
         default = lib.default_background()
         bgs = []
-        for a, b, ch in ranges:
+        for i, (a, b, ch) in enumerate(ranges):
             kws = list(ch.get("background_keywords", [])) + ([ch["title"]] if ch.get("title") else [])
-            p = (lib.find_background(kws) if cfg["background"]["per_chapter"] else None) or default
-            if p:
-                bgs.append({"path": str(p), "start": a, "end": b})
+            local = (lib.find_background(kws) if cfg["background"]["per_chapter"] else None) or default
+            en = [ch.get("background_query_en", "")] + [BACKGROUND_FALLBACK_EN[i % len(BACKGROUND_FALLBACK_EN)]]
+            path, meta = pick(local, lambda: online.image(kws[:2], en, "backgrounds"))
+            if path:
+                bgs.append({"path": path, "start": a, "end": b, "credit": meta})
+            elif bgs:
+                bgs.append({**bgs[-1], "start": a, "end": b})
         plan["background"] = _merge(bgs, ("path",))
         if not plan["background"]:
-            print("[背景] assets/backgrounds に画像が無いためスキップ")
+            print("[背景] 背景画像が見つからないためスキップ")
 
     if "bgm" in features:
         mood_cfg = cfg["bgm"]["mood"]
@@ -102,31 +119,30 @@ def build_plan(segments: list[Segment], info: MediaInfo, source: Path, features:
         for a, b, ch in ranges:
             mood = (ch.get("bgm_mood") or "calm") if mood_cfg == "auto" else mood_cfg
             files = lib.bgm_list(mood)
-            if files:
-                items.append({"path": str(files[0]), "mood": mood, "start": a, "end": b})
+            path, meta = pick(files[0] if files else None, lambda: online.bgm(mood))
+            if path:
+                items.append({"path": path, "mood": mood, "start": a, "end": b, "credit": meta})
         plan["bgm"] = [{**e, "volume_db": cfg["bgm"]["volume_db"]} for e in _merge(items, ("path",))]
         if not plan["bgm"]:
-            print("[BGM] assets/bgm に音源が無いためスキップ")
+            print("[BGM] BGM が見つからないためスキップ")
 
     if "materials" in features:
         mc = cfg["materials"]
         shown: list[dict] = []
         last_end, last_path = -1.0, None
-        fetched = 0
         for s in segments:
-            if s.start < last_end or not s.keywords:
-                continue
-            p = lib.find_material(s.keywords)
-            if p is None and cfg.get("pexels_api_key") and fetched < 30:
-                p = fetch_pexels(s.keywords[0], cfg["pexels_api_key"], work_dir / "pexels")
-                fetched += p is not None
-            if p is None or (str(p) == last_path and s.start - last_end < 30):
+            if s.start < last_end or not (s.keywords or s.image_query):
                 continue
             if sum(1 for m in shown if m["start"] > s.start - 60) >= mc["max_per_minute"]:
                 continue
+            path, meta = pick(lib.find_material(s.keywords) if s.keywords else None,
+                              lambda: online.image(s.keywords[:2], [s.image_query], "materials"))
+            if path is None or (path == last_path and s.start - last_end < 30):
+                continue
             end = min(D, s.start + min(mc["max_duration"], max(mc["min_duration"], s.duration)))
-            shown.append({"path": str(p), "start": s.start, "end": end, "keyword": s.keywords[0]})
-            last_end, last_path = end, str(p)
+            shown.append({"path": path, "start": s.start, "end": end,
+                          "keyword": s.keywords[0] if s.keywords else s.image_query, "credit": meta})
+            last_end, last_path = end, path
         plan["materials"] = shown
 
     if "expressions" in features:
@@ -171,10 +187,35 @@ def build_plan(segments: list[Segment], info: MediaInfo, source: Path, features:
         events += [(p["start"] + 0.1, "popup", 0) for p in plan["popups"]]
         last_t = -999.0
         for t, kind, seed in sorted(events):
-            p = lib.se(kind, seed)
             forced = kind in ("cutin", "popup")
-            if p and (forced or t - last_t >= sc["min_gap"]):
-                plan["se"].append({"path": str(p), "kind": kind, "time": round(t, 3), "volume_db": sc["volume_db"]})
+            if not forced and t - last_t < sc["min_gap"]:
+                continue
+            path, meta = pick(lib.se(kind, seed), lambda: online.se(kind, seed))
+            if path:
+                plan["se"].append({"path": path, "kind": kind, "time": round(t, 3), "volume_db": sc["volume_db"],
+                                   "credit": meta})
                 last_t = t
 
+    plan["credits"] = collect_credits(plan)
+    if online.downloads:
+        print(f"[ネット素材] 新たに {online.downloads} 件ダウンロード (キャッシュ: {online.cache})")
     return plan
+
+
+def _hit(result) -> tuple[str | None, dict | None]:
+    if not result:
+        return None, None
+    path, meta = result
+    return str(path), meta
+
+
+def collect_credits(plan: dict) -> list[dict]:
+    """プランで使っているネット素材のクレジット(重複なし)。"""
+    seen, out = set(), []
+    for key in ("background", "bgm", "materials", "se"):
+        for e in plan.get(key, []):
+            c = e.get("credit")
+            if c and c.get("url") not in seen:
+                seen.add(c.get("url"))
+                out.append({**c, "used_as": key})
+    return out

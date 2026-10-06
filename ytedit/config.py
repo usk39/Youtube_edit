@@ -24,16 +24,31 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "silence_cut": {"noise_db": -38, "min_silence": 0.7, "keep_padding": 0.18},
     "audio": {"target_lufs": -14, "true_peak": -1.5, "highpass_hz": 80, "denoise": True, "compressor": True},
     "bgm": {"volume_db": -24, "ducking": True, "fade_in": 2.0, "fade_out": 3.0, "mood": "auto"},
-    "background": {"video_scale": 0.72, "video_top": 36, "border": 8, "border_color": "#FFFFFF", "per_chapter": True},
+    "background": {"video_scale": 0.72, "video_top": 36, "border": 8, "border_color": "#FFFFFF", "per_chapter": True,
+                   "blur": 4, "darken": 0.15},  # ネット写真は少しぼかして暗くし、元動画を目立たせる
     "materials": {"min_duration": 3.0, "max_duration": 7.0, "max_per_minute": 6, "box": [0.30, 0.10, 0.40, 0.42]},
-    "expressions": {"height_ratio": 0.50, "margin_x": 10, "bob": True},
+    "expressions": {"height_ratio": 0.46, "margin_x": 10, "bob": True, "motion": True, "head_ratio": 0.6},
     "se": {"volume_db": -6, "min_gap": 2.5},
     "cutin": {"duration": 1.6, "max_count": 8, "min_gap": 25.0, "height_ratio": 0.36},
     "wipe": {"diameter": 240, "border": 8, "position": "top-right", "margin": 30, "video": None},
-    "subtitles": {"font_size": 60, "max_chars_per_line": 22, "outline": 6, "margin_v": 30},
+    # max_chars_per_line は上限。実際は画面幅とキャラの幅から自動計算した文字数との小さい方
+    # punctuation: strip_period=行末の「。」を消す / space=「、。」を空白に / keep=そのまま
+    "subtitles": {"font_size": 60, "max_chars_per_line": 20, "max_lines": 2, "outline": 6, "margin_v": 30,
+                  "punctuation": "strip_period"},
     "popup": {"duration": 7.0, "triggers": ["お願いがあるの", "チャンネル登録"]},
     "shorts": {"length": 45.0},
-    "pexels_api_key": None,  # 設定すると、手持ち素材に無いキーワードを Pexels から自動取得
+    # ネットからの素材取得。API キーは環境変数(PIXABAY_API_KEY 等)でも指定できる
+    "online": {
+        "enabled": True,
+        "prefer": "online",  # online=ネット優先(無ければ assets/ の手持ち素材) / local=手持ち優先
+        "cache_dir": None,  # 既定: <assets_dir>/_online
+        "allowed_licenses": ["cc0", "pdm", "by"],  # 商用・改変OKのみ。"by-sa" を足すことも可
+        "max_downloads": 80,
+        "pixabay_api_key": None,
+        "pexels_api_key": None,
+        "freesound_api_key": None,
+        "jamendo_client_id": None,
+    },
 }
 
 

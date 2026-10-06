@@ -16,13 +16,13 @@ class _FakeMessages:
         if output_format is llm.SegmentTags:
             return _Resp(llm.SegmentTags(segments=[
                 llm.SegmentTag(index=1, emotion="jito", se="shock", emphasis=0.8, cutin=True,
-                               cutin_text="口だけやん", material_keywords=["国会"]),
+                               cutin_text="口だけやん", material_keywords=["国会"], image_query_en="parliament building"),
                 llm.SegmentTag(index=99, emotion="normal", se="none", emphasis=0, cutin=False,
-                               cutin_text="", material_keywords=[]),
+                               cutin_text="", material_keywords=[], image_query_en=""),
             ]))
         return _Resp(llm.Overview(
-            chapters=[llm.Chapter(start_index=0, title="導入", bgm_mood="calm", background_keywords=[]),
-                      llm.Chapter(start_index=1, title="本題", bgm_mood="tense", background_keywords=["政治"])],
+            chapters=[llm.Chapter(start_index=0, title="導入", bgm_mood="calm", background_keywords=[], background_query_en="city"),
+                      llm.Chapter(start_index=1, title="本題", bgm_mood="tense", background_keywords=["政治"], background_query_en="parliament")],
             title_ideas=["タイトル"], description="説明", thumbnail_text="ヤバい", tags=["ニュース"]))
 
 
@@ -32,9 +32,10 @@ def test_analyze_with_claude_applies_tags(monkeypatch, cfg):
     segs = [Segment(0, 1, "ねえ", "aoi"), Segment(5, 6, "政治家はまた言い訳しとる", "aoi")]
     ov = llm.analyze_with_claude(segs, cfg, ["国会"], ["政治"])
     assert segs[1].emotion == "jito" and segs[1].se == "shock" and segs[1].cutin_text == "口だけやん"
-    assert segs[1].keywords == ["国会"]
+    assert segs[1].keywords == ["国会"] and segs[1].image_query == "parliament building"
     assert [c["start"] for c in ov["chapters"]] == [0.0, 5]
     assert ov["chapters"][1]["bgm_mood"] == "tense" and ov["thumbnail_text"] == "ヤバい"
+    assert ov["chapters"][1]["background_query_en"] == "parliament"
 
 
 def test_llm_available_respects_off(cfg, monkeypatch):

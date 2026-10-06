@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
+from .linebreak import break_text, tidy
 from .transcript import Segment
 
 
@@ -18,31 +18,22 @@ def _ass_color(hex_color: str, alpha: int = 0) -> str:
     return f"&H{alpha:02X}{h[4:6]}{h[2:4]}{h[0:2]}".upper()
 
 
-def wrap(text: str, max_chars: int) -> list[str]:
-    """句読点を優先して max_chars 以内の行に分ける。"""
-    lines, cur = [], ""
-    for piece in re.findall(r"[^、。！？!?,，]*[、。！？!?,，]?", text):
-        if not piece:
-            continue
-        while len(piece) > max_chars:
-            room = max_chars - len(cur)
-            lines.append(cur + piece[:room])
-            cur, piece = "", piece[room:]
-        if len(cur) + len(piece) > max_chars:
-            lines.append(cur)
-            cur = piece
-        else:
-            cur += piece
-    if cur:
-        lines.append(cur)
-    return [l for l in lines if l.strip()]
+def auto_max_chars(cfg: dict, side_margin: int) -> int:
+    """画面幅・余白・文字サイズから 1 行に入る文字数を計算(設定値より大きくはしない)。"""
+    W, H = cfg["output"]["width"], cfg["output"]["height"]
+    size = cfg["subtitles"]["font_size"] * H / 1080
+    fit = int((W - 2 * side_margin) / (size * 1.02))
+    return max(6, min(int(cfg["subtitles"]["max_chars_per_line"]), fit))
 
 
 def build_ass(segments: list[Segment], cfg: dict, font_name: str, side_margin: int) -> str:
+    """話者色分けの ASS 字幕。各セリフは区切りのいい所で 1〜2 行(長ければ複数ページ)にする。"""
     W, H = cfg["output"]["width"], cfg["output"]["height"]
     sc = cfg["subtitles"]
     scale = H / 1080
     size, outline = int(sc["font_size"] * scale), max(1, int(sc["outline"] * scale))
+    max_chars = auto_max_chars(cfg, side_margin)
+    punct = sc.get("punctuation", "strip_period")
     styles = []
     for cid, c in {**cfg["characters"], "default": {"color": "#333333"}}.items():
         styles.append(
@@ -51,13 +42,13 @@ def build_ass(segments: list[Segment], cfg: dict, font_name: str, side_margin: i
         )
     events = []
     for s in segments:
-        lines = wrap(s.text, sc["max_chars_per_line"])
-        chunks = [lines[i:i + 2] for i in range(0, len(lines), 2)] or [[s.text]]
+        chunks = break_text(s.text, max_chars, int(sc.get("max_lines", 2)),
+                            "。" if punct == "strip_period" else "") or [[s.text]]
         total = sum(len("".join(c)) for c in chunks) or 1
         t = s.start
         for c in chunks:
             dur = s.duration * len("".join(c)) / total
-            text = r"\N".join(x.replace("{", "｛").replace("}", "｝") for x in c)
+            text = r"\N".join(tidy(x, punct).replace("{", "｛").replace("}", "｝") for x in c)
             style = s.speaker if s.speaker in cfg["characters"] else "default"
             events.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + dur)},{style},,0,0,0,,{text}")
             t += dur

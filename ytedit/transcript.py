@@ -21,6 +21,7 @@ class Segment:
     cutin: bool = False
     cutin_text: str = ""
     keywords: list[str] = field(default_factory=list)
+    image_query: str = ""  # ネット画像検索用の英語クエリ(Claude 解析時)
 
     @property
     def duration(self) -> float:

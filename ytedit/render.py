@@ -78,6 +78,26 @@ def _ffmpeg_major() -> int:
         return 0
 
 
+def _char_motion(e: dict, side: str, ec: dict, H: int) -> tuple[str, str]:
+    """立ち絵の位置の式。話している間の揺れと、表情ごとの動き(ジャンプ/震え/沈む)。"""
+    x = str(ec["margin_x"]) if side == "left" else f"W-w-{ec['margin_x']}"
+    y = "H-h+10"
+    a = f"(t-{e['start']:.3f})"
+    motion = e.get("motion") if ec.get("motion", True) else None
+    k = H / 1080
+    if motion == "jump":  # 驚き: ぴょんぴょんと2回跳ねる
+        y += f"-{40 * k:.1f}*abs(sin(PI*{a}/0.22))*lt({a},0.44)"
+    elif motion == "shake":  # 怒り: ぶるぶる震える
+        x += f"+{9 * k:.1f}*sin(2*PI*16*{a})*lt({a},0.6)"
+    elif motion == "sink":  # 落ち込み・ジト目: 少し沈む
+        y += f"+{22 * k:.1f}*min(1,{a}/0.4)"
+    elif motion == "bounce" and e.get("speaking"):  # 笑い: 小刻みに弾む
+        y += f"-{10 * k:.1f}*abs(sin(2*PI*4*t))"
+    if e.get("speaking") and ec["bob"] and motion not in ("jump", "bounce"):
+        y += f"-{6 * k:.1f}*abs(sin(2*PI*2.4*t))"
+    return x, y
+
+
 def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir: str | Path) -> tuple[list[str], str]:
     """ffmpeg 引数とフィルタグラフ文字列を返す(グラフはファイル経由で渡す)。"""
     oc = cfg["output"]
@@ -95,7 +115,9 @@ def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir:
         cur = g.label("v")
         g.filters.append(f"[{base_in}:v]setsar=1,format=yuv420p[{cur}]")
         for e in bg_events:
-            p = G.prepare_background(e["path"], W, H, _gfx_name(work, "bg", e["path"], W, H))
+            bc = cfg["background"]
+            p = G.prepare_background(e["path"], W, H, _gfx_name(work, "bg", e["path"], W, H, bc["blur"], bc["darken"]),
+                                     bc["blur"], bc["darken"])
             cur = g.overlay(cur, g.image(p), "0", "0", e["start"], e["end"])
         if plan["has_video"]:
             bc = cfg["background"]
@@ -124,14 +146,17 @@ def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir:
     ec = cfg["expressions"]
     char_h = int(H * ec["height_ratio"])
     char_w_max = 0
+    lib = AssetLibrary(assets_dir)
+    boxes: dict[str, tuple | None] = {}
     for e in plan.get("expressions", []):
-        side = chars_cfg.get(e["char"], {}).get("side", "left")
-        p = G.prepare_character(e["path"], char_h, _gfx_name(work, "chr", e["path"], char_h))
+        c = e["char"]
+        if c not in boxes:
+            files = [lib.character(c, x) for x in lib.expressions(c)]
+            boxes[c] = G.union_bbox([f for f in files if f])
+        side = chars_cfg.get(c, {}).get("side", "left")
+        p = G.prepare_character(e["path"], char_h, _gfx_name(work, "chr", e["path"], char_h, boxes[c]), box=boxes[c])
         char_w_max = max(char_w_max, Image.open(p).width)
-        x = str(ec["margin_x"]) if side == "left" else f"W-w-{ec['margin_x']}"
-        y = "H-h+10"
-        if e.get("speaking") and ec["bob"]:
-            y = "H-h+10-6*abs(sin(2*PI*2.4*t))"
+        x, y = _char_motion(e, side, ec, H)
         cur = g.overlay(cur, g.image(p), x, y, e["start"], e["end"])
 
     # ------------------------------------------------------------ 丸顔ワイプ
@@ -154,7 +179,6 @@ def build_command(plan: dict, cfg: dict, work: Path, out_path: Path, assets_dir:
         cur = g.overlay(cur, wv, wx_in, wy_in, 0.0, D, eof="pass")
         ring = G.make_wipe_ring(dia, int(wc["border"]), "#FFFFFF", _gfx_name(work, "ring", dia))
         cur = g.overlay(cur, g.image(ring), wx, wy)
-    lib = AssetLibrary(assets_dir)
     for e in plan.get("wipe", []):
         color = chars_cfg.get(e["char"], {}).get("color", "#FFFFFF")
         body = lib.character(e["char"], e["expression"])
